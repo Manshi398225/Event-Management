@@ -4,7 +4,15 @@ import { apiRequest } from "../api/client";
 import Loader from "../components/Loader";
 import EmptyState from "../components/EmptyState";
 import EventCard from "../components/EventCard";
+import ToastStack from "../components/ToastStack";
 import useAuth from "../hooks/useAuth";
+
+const createToast = (title, message, type = "info") => ({
+  id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  title,
+  message,
+  type,
+});
 
 function HomePage() {
   const { isAuthenticated, token, user } = useAuth();
@@ -14,8 +22,18 @@ function HomePage() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [loading, setLoading] = useState(true);
+  const [registeringId, setRegisteringId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [toasts, setToasts] = useState([]);
+
+  const pushToast = (title, details, type) => {
+    const nextToast = createToast(title, details, type);
+    setToasts((current) => [...current, nextToast]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== nextToast.id));
+    }, 4500);
+  };
 
   const loadEvents = async () => {
     try {
@@ -57,19 +75,25 @@ function HomePage() {
     try {
       setMessage("");
       setError("");
+      setRegisteringId(eventId);
       const data = await apiRequest(`/register/${eventId}`, {
         method: "POST",
         token,
       });
       setMessage(data.message);
+      pushToast("Registration submitted", data.message, "success");
       loadEvents();
     } catch (err) {
       setError(err.message);
+      pushToast("Unable to register", err.message, "error");
+    } finally {
+      setRegisteringId("");
     }
   };
 
   return (
     <section className="page-section">
+      <ToastStack onDismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} toasts={toasts} />
       <div className="hero card hero-card">
         <div>
           <span className="pill">College Event Platform</span>
@@ -143,11 +167,11 @@ function HomePage() {
                 user?.role === "student" ? (
                   <button
                     className="button"
-                    disabled={event.status === "Full"}
+                    disabled={event.status === "Full" || registeringId === event._id}
                     onClick={() => handleRegister(event._id)}
                     type="button"
                   >
-                    {event.status === "Full" ? "Event Full" : "Register"}
+                    {registeringId === event._id ? "Registering..." : event.status === "Full" ? "Event Full" : "Register"}
                   </button>
                 ) : !isAuthenticated ? (
                   <Link className="button" to="/login">

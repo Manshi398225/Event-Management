@@ -22,6 +22,36 @@ const sanitizeFileName = (value) =>
 
 const createTicketCode = (registrationId) => `EMS-${String(registrationId).slice(-6).toUpperCase()}`;
 
+const queueEmail = (label, task) => {
+  Promise.resolve()
+    .then(task)
+    .catch((error) => {
+      console.error(`Failed to send ${label}:`, error.message);
+    });
+};
+
+const findScheduleConflict = async ({ userId, eventId, eventDate, excludeRegistrationId }) => {
+  const conflictingEvents = await Event.find({
+    _id: { $ne: eventId },
+    date: eventDate,
+  })
+    .select("title date location")
+    .lean();
+
+  if (conflictingEvents.length === 0) {
+    return null;
+  }
+
+  const conflict = await Registration.findOne({
+    userId,
+    eventId: { $in: conflictingEvents.map((entry) => entry._id) },
+    status: { $ne: "rejected" },
+    ...(excludeRegistrationId ? { _id: { $ne: excludeRegistrationId } } : {}),
+  }).populate("eventId", "title date location");
+
+  return conflict;
+};
+
 const ensureTicket = async (registration, user, event) => {
   if (registration.ticketCode && registration.qrCodeDataUrl) {
     return registration;
@@ -63,6 +93,18 @@ const registerForEvent = async (req, res) => {
     return res.status(400).json({ message: "You have already registered for this event" });
   }
 
+  const conflictingRegistration = await findScheduleConflict({
+    userId: req.user._id,
+    eventId: event._id,
+    eventDate: event.date,
+  });
+
+  if (conflictingRegistration?.eventId) {
+    return res.status(400).json({
+      message: `You are already registered for "${conflictingRegistration.eventId.title}" at the same date and time.`,
+    });
+  }
+
   const currentRegistrations = await Registration.countDocuments({
     eventId: event._id,
     status: { $ne: "rejected" },
@@ -80,14 +122,16 @@ const registerForEvent = async (req, res) => {
 
   await ensureTicket(registration, req.user, event);
 
-  await sendRegistrationEmail({
-    email: req.user.email,
-    name: req.user.name,
-    eventTitle: event.title,
-    eventDate: event.date,
-    location: event.location,
-    status: registration.status,
-  });
+  queueEmail("registration email", () =>
+    sendRegistrationEmail({
+      email: req.user.email,
+      name: req.user.name,
+      eventTitle: event.title,
+      eventDate: event.date,
+      location: event.location,
+      status: registration.status,
+    })
+  );
 
   return res.status(201).json({
     message: "Registered successfully",
@@ -145,6 +189,7 @@ const getAllRegistrations = async (req, res) => {
 
 const exportRegistrations = async (req, res) => {
   const filter = {};
+  const exportType = req.query.type === "participants" ? "participants" : "all";
 
   if (req.query.eventId) {
     filter.eventId = req.query.eventId;
@@ -155,40 +200,57 @@ const exportRegistrations = async (req, res) => {
     .populate("eventId", "title date location category")
     .sort({ createdAt: -1 });
 
-  const csvRows = [
-    [
-      "Student Name",
-      "Student Email",
-      "Student Role",
-      "Event Title",
-      "Event Date",
-      "Event Location",
-      "Category",
-      "Registration Status",
-      "Ticket Code",
-      "Feedback Rating",
-      "Feedback Comment",
-      "Registered At",
-    ],
-    ...registrations.map((registration) => [
-      registration.userId?.name || "",
-      registration.userId?.email || "",
-      registration.userId?.role || "",
-      registration.eventId?.title || "",
-      registration.eventId?.date ? new Date(registration.eventId.date).toISOString() : "",
-      registration.eventId?.location || "",
-      registration.eventId?.category || "",
-      registration.status,
-      registration.ticketCode || "",
-      registration.feedbackRating || "",
-      registration.feedbackComment || "",
-      registration.createdAt ? new Date(registration.createdAt).toISOString() : "",
-    ]),
-  ];
+  const csvRows =
+    exportType === "participants"
+      ? [
+          ["Student Name", "Student Email", "Event Title", "Event Date", "Registration Status", "Registered At"],
+          ...registrations.map((registration) => [
+            registration.userId?.name || "",
+            registration.userId?.email || "",
+            registration.eventId?.title || "",
+            registration.eventId?.date ? new Date(registration.eventId.date).toISOString() : "",
+            registration.status,
+            registration.createdAt ? new Date(registration.createdAt).toISOString() : "",
+          ]),
+        ]
+      : [
+          [
+            "Student Name",
+            "Student Email",
+            "Student Role",
+            "Event Title",
+            "Event Date",
+            "Event Location",
+            "Category",
+            "Registration Status",
+            "Ticket Code",
+            "Feedback Rating",
+            "Feedback Comment",
+            "Registered At",
+          ],
+          ...registrations.map((registration) => [
+            registration.userId?.name || "",
+            registration.userId?.email || "",
+            registration.userId?.role || "",
+            registration.eventId?.title || "",
+            registration.eventId?.date ? new Date(registration.eventId.date).toISOString() : "",
+            registration.eventId?.location || "",
+            registration.eventId?.category || "",
+            registration.status,
+            registration.ticketCode || "",
+            registration.feedbackRating || "",
+            registration.feedbackComment || "",
+            registration.createdAt ? new Date(registration.createdAt).toISOString() : "",
+          ]),
+        ];
 
   const fileStem = req.query.eventId
-    ? sanitizeFileName(registrations[0]?.eventId?.title || "event-registrations")
-    : "all-registrations";
+    ? sanitizeFileName(
+        `${registrations[0]?.eventId?.title || "event"}-${exportType === "participants" ? "participants" : "registrations"}`
+      )
+    : exportType === "participants"
+      ? "participant-list"
+      : "all-registrations";
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename=\"${fileStem}.csv\"`);
@@ -244,8 +306,8 @@ const sendReminderEmails = async (req, res) => {
     return res.status(404).json({ message: "No eligible registrations found for reminders" });
   }
 
-  await Promise.all(
-    registrations.map((registration) =>
+  registrations.forEach((registration) => {
+    queueEmail("reminder email", () =>
       sendEventReminderEmail({
         email: registration.userId?.email,
         name: registration.userId?.name,
@@ -253,11 +315,11 @@ const sendReminderEmails = async (req, res) => {
         eventDate: registration.eventId?.date,
         location: registration.eventId?.location,
       })
-    )
-  );
+    );
+  });
 
   return res.json({
-    message: `Reminder emails processed for ${registrations.length} attendee(s)`,
+    message: `Reminder emails queued for ${registrations.length} attendee(s)`,
   });
 };
 
@@ -274,6 +336,22 @@ const updateRegistrationStatus = async (req, res) => {
     return res.status(404).json({ message: "Registration not found" });
   }
 
+  if (status !== "rejected") {
+    const event = await Event.findById(registration.eventId).select("title date location");
+    const conflictingRegistration = await findScheduleConflict({
+      userId: registration.userId,
+      eventId: registration.eventId,
+      eventDate: event?.date,
+      excludeRegistrationId: registration._id,
+    });
+
+    if (conflictingRegistration?.eventId) {
+      return res.status(400).json({
+        message: `This student already has "${conflictingRegistration.eventId.title}" at the same date and time.`,
+      });
+    }
+  }
+
   registration.status = status;
   await registration.save();
 
@@ -282,14 +360,16 @@ const updateRegistrationStatus = async (req, res) => {
     { path: "eventId", select: "title date location description" },
   ]);
 
-  await sendRegistrationEmail({
-    email: populated.userId?.email,
-    name: populated.userId?.name,
-    eventTitle: populated.eventId?.title,
-    eventDate: populated.eventId?.date,
-    location: populated.eventId?.location,
-    status,
-  });
+  queueEmail("status email", () =>
+    sendRegistrationEmail({
+      email: populated.userId?.email,
+      name: populated.userId?.name,
+      eventTitle: populated.eventId?.title,
+      eventDate: populated.eventId?.date,
+      location: populated.eventId?.location,
+      status,
+    })
+  );
 
   return res.json({
     message: "Registration status updated",

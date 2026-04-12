@@ -48,9 +48,12 @@ const sendRegistrationEmail = async ({ email, name, eventTitle, eventDate, locat
   }
 
   const isNewRegistration = status === "registered";
+  const isApproved = status === "approved";
   const subject = isNewRegistration
     ? "\uD83C\uDF89 Event Registration Confirmed"
-    : `Event registration ${status}: ${eventTitle}`;
+    : isApproved
+      ? `Registration approved: ${eventTitle}`
+      : `Event registration ${status}: ${eventTitle}`;
   const text = isNewRegistration
     ? `Hello ${name},
 
@@ -74,7 +77,37 @@ We look forward to seeing you at the event!
 
 Best Regards,
 Event Management System (EMS) \uD83D\uDE80`
-    : `Hello ${name}, your registration for "${eventTitle}" is now marked as "${status}".`;
+    : isApproved
+      ? `Hello ${name},
+
+We are pleased to inform you that your registration for the event has been successfully approved.
+Your participation has been confirmed, and we are excited to have you join us.
+
+Event Details:
+Event Name : ${eventTitle}
+Venue      : ${location || ""}
+Date       : ${formatEventDate(eventDate)}
+Time       : ${formatEventTime(eventDate)}
+
+We look forward to your presence and hope you have a valuable and engaging experience.
+Further event details have been shared via email for your reference.
+
+Thank you for your interest and participation.
+
+Best regards,
+Event Management Team`
+      : `Hello ${name},
+
+Your registration for "${eventTitle}" is now marked as "${status}".
+
+Event Details:
+Event Name : ${eventTitle}
+Venue      : ${location || ""}
+Date       : ${formatEventDate(eventDate)}
+Time       : ${formatEventTime(eventDate)}
+
+Best regards,
+Event Management Team`;
 
   await transporter.sendMail({
     from: process.env.SMTP_FROM,
@@ -93,7 +126,21 @@ const sendEventReminderEmail = async ({ email, name, eventTitle, eventDate, loca
     from: process.env.SMTP_FROM,
     to: email,
     subject: `Reminder: ${eventTitle} is coming up`,
-    text: `Hello ${name}, this is a reminder for "${eventTitle}" on ${new Date(eventDate).toLocaleString()} at ${location}.`,
+    text: `Hello ${name},
+
+This is a reminder for your participation in the ${eventTitle}.
+
+\uD83D\uDCCD Venue: ${location || ""}
+\uD83D\uDD52 Time: ${formatEventTime(eventDate)}, ${formatEventDate(eventDate)}
+
+We are excited to have you join us for this event.
+Please ensure your availability and arrive on time.
+Kindly check your email for any additional updates or instructions.
+
+We look forward to your presence.
+
+Best regards,
+Event Management Team`,
   });
 };
 

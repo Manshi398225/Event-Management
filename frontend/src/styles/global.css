@@ -70,6 +70,44 @@ select {
   align-items: center;
 }
 
+.toast-stack {
+  position: fixed;
+  top: 5.5rem;
+  right: 1rem;
+  z-index: 20;
+  display: grid;
+  gap: 0.75rem;
+  width: min(360px, calc(100vw - 2rem));
+}
+
+.toast {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  text-align: left;
+  padding: 1rem 1.1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(18, 48, 76, 0.08);
+  box-shadow: 0 20px 35px rgba(18, 48, 76, 0.14);
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--text);
+}
+
+.toast span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.toast-success {
+  border-color: rgba(13, 124, 73, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(224, 248, 238, 0.98));
+}
+
+.toast-error {
+  border-color: rgba(177, 43, 58, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 234, 237, 0.98));
+}
+
 .nav-bar {
   justify-content: space-between;
   gap: 1rem;
@@ -221,11 +259,16 @@ select {
   align-items: start;
 }
 
+.registrations-tools-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
 .event-card,
 .profile-card,
 .auth-card,
 .detail-card,
-.event-form-card {
+.event-form-card,
+.admin-action-card {
   display: grid;
   gap: 1rem;
 }
@@ -286,6 +329,27 @@ select {
 
 .pill.soft {
   background: rgba(18, 48, 76, 0.08);
+  color: var(--muted);
+}
+
+.admin-action-card h3 {
+  margin: 0.35rem 0 0;
+}
+
+.admin-action-card .input {
+  margin-bottom: 0;
+}
+
+.notification-preview {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(39, 147, 255, 0.08), rgba(255, 255, 255, 0.92));
+  border: 1px solid rgba(39, 147, 255, 0.16);
+}
+
+.notification-preview span {
   color: var(--muted);
 }
 
@@ -403,6 +467,12 @@ thead {
   color: #b12b3a;
 }
 
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  transform: none;
+}
+
 .loader-wrap,
 .empty-state {
   text-align: center;
@@ -445,6 +515,12 @@ thead {
 @media (max-width: 640px) {
   .container {
     width: min(100% - 1rem, 100%);
+  }
+
+  .toast-stack {
+    top: auto;
+    right: 0.75rem;
+    bottom: 0.75rem;
   }
 
   .calendar-grid {
