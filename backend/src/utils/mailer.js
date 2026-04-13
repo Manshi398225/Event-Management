@@ -18,6 +18,19 @@ const transporter = hasSmtpConfig
     })
   : null;
 
+if (transporter) {
+  transporter
+    .verify()
+    .then(() => {
+      console.log(`SMTP ready for ${process.env.SMTP_USER}`);
+    })
+    .catch((error) => {
+      console.error("SMTP connection failed:", error.message);
+    });
+} else {
+  console.warn("SMTP is disabled. Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS to send emails.");
+}
+
 const formatEventDate = (value) => {
   if (!value) {
     return "";
@@ -39,6 +52,28 @@ const formatEventTime = (value) => {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+  });
+};
+
+const getFromAddress = () => process.env.SMTP_FROM || process.env.SMTP_USER;
+
+const sendWelcomeEmail = async ({ email, name }) => {
+  if (!transporter || !email) {
+    return;
+  }
+
+  await transporter.sendMail({
+    from: getFromAddress(),
+    to: email,
+    subject: "Welcome to EMS",
+    text: `Hello ${name},
+
+Your EMS account has been created successfully.
+
+You can now sign in, browse campus events, and register for the ones you want to attend.
+
+Best regards,
+Event Management System`,
   });
 };
 
@@ -110,7 +145,7 @@ Best regards,
 Event Management Team`;
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM,
+    from: getFromAddress(),
     to: email,
     subject,
     text,
@@ -123,7 +158,7 @@ const sendEventReminderEmail = async ({ email, name, eventTitle, eventDate, loca
   }
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM,
+    from: getFromAddress(),
     to: email,
     subject: `Reminder: ${eventTitle} is coming up`,
     text: `Hello ${name},
@@ -144,4 +179,4 @@ Event Management Team`,
   });
 };
 
-module.exports = { sendRegistrationEmail, sendEventReminderEmail };
+module.exports = { sendWelcomeEmail, sendRegistrationEmail, sendEventReminderEmail };

@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const generateToken = require("../utils/generateToken");
+const { sendWelcomeEmail } = require("../utils/mailer");
 
 const sanitizeUser = (user) => ({
   _id: user._id,
@@ -9,6 +10,14 @@ const sanitizeUser = (user) => ({
   role: user.role,
   createdAt: user.createdAt,
 });
+
+const queueEmail = (label, task) => {
+  Promise.resolve()
+    .then(task)
+    .catch((error) => {
+      console.error(`Failed to send ${label}:`, error.message);
+    });
+};
 
 const registerUser = async (req, res) => {
   const { name, email, password, role } = req.body;
@@ -31,6 +40,13 @@ const registerUser = async (req, res) => {
     password: hashedPassword,
     role: role === "admin" ? "admin" : "student",
   });
+
+  queueEmail("welcome email", () =>
+    sendWelcomeEmail({
+      email: user.email,
+      name: user.name,
+    })
+  );
 
   return res.status(201).json({
     message: "Registration successful",
